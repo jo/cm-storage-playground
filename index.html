@@ -1,84 +1,98 @@
 <!DOCTYPE html>
 <h1>Data Usage and Limits Playground</h1>
-<p>To find reasonable defaults for a custom data type store (a.k.a Megastore) for Megalist, you can play with this tool to gain a better understanding of the influence of the different assumptions.</p>
-<form id=config_form style="display:flex">
-  <fieldset>
-    <legend>Usage Pattern</legend>
-    <p>
-      <label>Initial number of records: <input type=number name=initial_number_of_records value=10000></label>
-    </p>
-    <p>
-      <label>Number of fields per record: <input type=number name=number_of_fields_per_record value=5></label>
-    </p>
-    <p>
-      <label>Memory per field: <input type=number name=memory_per_field value=128> bytes</label>
-      (that's roughly <output id=memory_per_record>...</output> per record on storage. Based on empirical observations, the memory per record has to be multiplied by a factor of about four, to account for index storage and such.)
-    </p>
-    <p>
-      <label>Number of records added per month: <input type=number name=number_of_records_added_per_month value=100></label>
-    </p>
-    <p>
-      <label>Percentage of record changed each month: <input type=number name=percentage_of_record_changes_per_month value=1>%</label>
-    </p>
-  </fieldset>
-  <fieldset>
-    <legend>IndexedDB</legend>
-    <p>Simulating a flat store, one document per change</p>
-    <p>
-      <button id=action_button_drop>Drop Database</button>
-    </p>
-    <p>
-      <button id=action_button_seed>Seed Initial Records</button>
-    </p>
-    <p>
-      <button id=action_button_seed_usage>Simulate 20 Years of Usage</button>
-    </p>
-    <p>
-      <button id=action_button_measure>Measure Load</button>
-    </p>
-    <pre id=database_info_container></pre>
-  </fieldset>
+<p>To find very rough but reasonable defaults for a custom data type store for FX CM, you can play with this tool to gain a better understanding of the influence of the different assumptions.</p>
+<form id=config_form>
+  <div style="display:flex">
+    <fieldset>
+      <legend>Record Pattern</legend>
+      <p>
+        <label>Initial number of records: <input type=number name=initial_number_of_records value=10000></label>
+      </p>
+      <p>
+        <label>Number of fields per record: <input type=number name=number_of_fields_per_record value=5></label>
+      </p>
+      <p>
+        <label>Memory per field: <input type=number name=memory_per_field value=128> bytes</label>
+        (that's roughly <output id=memory_per_record>...</output> per record on storage. Based on empirical observations, the memory per record has to be multiplied by a factor of about four, to account for index and such.)
+      </p>
+      <p>
+        <label>Number of records added per month: <input type=number name=number_of_records_added_per_month value=100></label>
+      </p>
+      <p>
+        <label>Percentage of records changed each month: <input type=number name=percentage_of_record_changes_per_month value=1>%</label>
+      </p>
+    </fieldset>
+    <fieldset>
+      <legend>Example Record</legend>
+      <pre id=record_sample_container style="white-space:pre-wrap"></pre>
+      <p id=record_sample_info></p>
+    </fieldset>
+  </div>
+  <div style="display:flex">
+    <fieldset>
+      <legend>Usage Pattern</legend>
+      <p>
+        <label>Percentage of records used each month: <input type=number name=percentage_of_record_used_per_month value=5>%</label>
+      </p>
+      <p>
+        <label>Average number of usages per used record and month: <input type=number name=number_of_usages_per_month value=4></label>
+      </p>
+    </fieldset>
+    <fieldset>
+      <legend>Example Usage</legend>
+      <pre id=usage_sample_container style="white-space:pre-wrap"></pre>
+      <p id=usage_sample_info></p>
+    </fieldset>
+  </div>
 </form>
 <h2>Forecast</h2>
-<p>Based on the above parameters, storage consumption would develop as follows over 20 years:</p>
-<div id=container></div>
-<details>
-  <summary>Legend</summary>
-  <p>Memory consumption on the left, number of records on the right.</p>
-  <dl>
-    <dt style="color:lightblue">blue</dt>
-    <dd>Number of Docs</dd>
-    <dt style="color:silver">silver</dt>
-    <dd>Number of Records</dd>
-    <dt style="color:orange">orange</dt>
-    <dd>Records memory</dd>
-  </dl>
-</details>
-<h2>Example Record</h2>
-<pre id=record_sample_container style="white-space:pre-wrap"></pre>
-<p id=record_sample_info></p>
+<p>Based on the above parameters, storage consumption and number of records would develop as follows over 20 years:</p>
+<div style="display:flex">
+  <div id=container></div>
+  <details open>
+    <summary>Legend</summary>
+    <p>Memory consumption in bytes on the left, number of records on the right.</p>
+    <dl>
+      <dt style="color:lightblue">blue</dt>
+      <dd>Number of Docs</dd>
+      <dt style="color:silver">silver</dt>
+      <dd>Number of Records (each version of a doc is a record)</dd>
+      <dt style="color:green">green</dt>
+      <dd>Number of Usages</dd>
+      <dt style="color:orange">orange</dt>
+      <dd>Records memory</dd>
+      <dt style="color:violet">violet</dt>
+      <dd>Usage memory</dd>
+    </dl>
+  </details>
+</div>
 <script type=module>
   import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
   import * as Faker from "https://cdn.jsdelivr.net/npm/@faker-js/faker/+esm";
 
   // chart dimensions and margins
-  const width = 800;
-  const height = 400;
+  const width = 1200;
+  const height = 500;
   const marginTop = 20;
   const marginRight = 60;
   const marginBottom = 30;
   const marginLeft = 80;
 
-  const memoryPerRecord = () => 3.75 * parseInt(config_form.number_of_fields_per_record.value) * parseInt(config_form.memory_per_field.value);
+  const storageOverheadFactor = 3.75
+  const memoryPerRecord = () => storageOverheadFactor * parseInt(config_form.number_of_fields_per_record.value) * parseInt(config_form.memory_per_field.value);
+  const memoryPerUsage  = () => storageOverheadFactor * 256;
 
   const forecast = () => {
     const result = [];
 
     const memPerRecord = memoryPerRecord();
+    const memPerUsage = memoryPerUsage();
 
-    let docs = parseInt(config_form.initial_number_of_records.value);
-    let records = docs;
-    let memory = records * memPerRecord;
+    let numberOfDocs = parseInt(config_form.initial_number_of_records.value);
+    let numberOfRecords = numberOfDocs;
+    let numberOfUsages = 0;
+    let recordsMemory = numberOfRecords * memPerRecord;
+    let usagesMemory = 0;
 
     for (let year = 2024; year < 2044; year++) {
       for (let month = 0; month < 12; month++) {
@@ -86,18 +100,25 @@
         date.setYear(year);
         date.setMonth(month);
         const newRecords = parseInt(config_form.number_of_records_added_per_month.value);
-        docs += newRecords;
+        numberOfDocs += newRecords;
         
-        const newStoredRecords = newRecords + Math.round(parseInt(config_form.percentage_of_record_changes_per_month.value) * docs / 100);
-        records += newStoredRecords;
-        
-        memory = memory + newStoredRecords * memPerRecord;
+        const newStoredRecords = newRecords + Math.round(parseFloat(config_form.percentage_of_record_changes_per_month.value) * numberOfDocs / 100);
+        numberOfRecords += newStoredRecords;
+        recordsMemory += newStoredRecords * memPerRecord;
+
+        const newUsages = Math.round(parseFloat(config_form.number_of_usages_per_month.value) * parseFloat(config_form.percentage_of_record_used_per_month.value) * numberOfDocs / 100)
+        numberOfUsages += newUsages
+        usagesMemory += newUsages * memPerUsage;
 
         result.push({
           date,
-          memory,
-          records,
-          docs,
+
+          numberOfRecords,
+          numberOfDocs,
+          numberOfUsages,
+          
+          recordsMemory,
+          usagesMemory,
         });
       }
     }
@@ -111,25 +132,13 @@
 
   // x scale
   const x = d3.scaleUtc()
-      .domain([
-        d3.min(data.map(({ date }) => date)),
-        d3.max(data.map(({ date }) => date))
-      ])
       .range([marginLeft, width - marginRight]);
 
   // y scale
   const y = d3.scaleLinear()
-      .domain([
-        d3.min(data.map(({ memory }) => memory)),
-        d3.max(data.map(({ memory }) => memory))
-      ])
       .range([height - marginBottom, marginTop]);
 
   const y2 = d3.scaleLinear()
-      .domain([
-        d3.min(data.map(({ records }) => records)),
-        d3.max(data.map(({ records }) => records))
-      ])
       .range([height - marginBottom, marginTop]);
 
   const svg = d3.create("svg")
@@ -154,40 +163,63 @@
       .attr("transform", `translate(${width - marginRight},0)`)
       .call(y2Axis);
 
-  // memory line
-  const memoryLine = d3.line()
+  // record memory line
+  const recordMemoryLine = d3.line()
       .x(d => x(d.date))
-      .y(d => y(d.memory));
+      .y(d => y(d.recordsMemory));
 
-  const memoryPath = svg.append("path")
+  const recordMemoryPath = svg.append("path")
       .attr("fill", "none")
       .attr("stroke", "orange")
       .attr("stroke-width", 1.5)
-      .attr("d", memoryLine(data));
+      .attr("d", recordMemoryLine(data));
+
+  // usage memory line
+  const usageMemoryLine = d3.line()
+      .x(d => x(d.date))
+      .y(d => y(d.usagesMemory));
+
+  const usageMemoryPath = svg.append("path")
+      .attr("fill", "none")
+      .attr("stroke", "violet")
+      .attr("stroke-width", 1.5)
+      .attr("d", usageMemoryLine(data));
 
   // docs line
-  const docsLine = d3.line()
+  const numberOfDocsLine = d3.line()
       .x(d => x(d.date))
-      .y(d => y2(d.docs));
+      .y(d => y2(d.numberOfDocs));
 
-  const docsPath = svg.append("path")
+  const numberOfDocsPath = svg.append("path")
       .attr("fill", "none")
       .attr("stroke", "lightblue")
       .attr("stroke-dasharray", "10")
       .attr("stroke-width", 1.5)
-      .attr("d", docsLine(data));
+      .attr("d", numberOfDocsLine(data));
 
-  // records line
-  const recordsLine = d3.line()
+  // no of records line
+  const numberOfRecordsLine = d3.line()
       .x(d => x(d.date))
-      .y(d => y2(d.records));
+      .y(d => y2(d.numberOfRecords));
 
-  const recordsPath = svg.append("path")
+  const numberOfRecordsPath = svg.append("path")
       .attr("fill", "none")
       .attr("stroke", "silver")
       .attr("stroke-dasharray", "10")
       .attr("stroke-width", 1.5)
-      .attr("d", recordsLine(data));
+      .attr("d", numberOfRecordsLine(data));
+
+  // no of usages line
+  const numberOfUsagesLine = d3.line()
+      .x(d => x(d.date))
+      .y(d => y2(d.numberOfUsages));
+
+  const numberOfUsagesPath = svg.append("path")
+      .attr("fill", "none")
+      .attr("stroke", "green")
+      .attr("stroke-dasharray", "10")
+      .attr("stroke-width", 1.5)
+      .attr("d", numberOfUsagesLine(data));
 
   container.append(svg.node());
 
@@ -199,21 +231,23 @@
       d3.max(data.map(({ date }) => date))
     ]);
     y.domain([
-      d3.min(data.map(({ memory }) => memory)),
-      d3.max(data.map(({ memory }) => memory))
+      d3.min(data.map(({ recordsMemory, usagesMemory }) => Math.min(recordsMemory, usagesMemory))),
+      d3.max(data.map(({ recordsMemory, usagesMemory }) => Math.max(recordsMemory, usagesMemory)))
     ]);
     y2.domain([
-      d3.min(data.map(({ records }) => records)),
-      d3.max(data.map(({ records }) => records))
+      d3.min(data.map(({ numberOfRecords, numberOfUsages }) => Math.min(numberOfRecords, numberOfUsages))),
+      d3.max(data.map(({ numberOfRecords, numberOfUsages }) => Math.max(numberOfRecords, numberOfUsages)))
     ]);
 
     xAxisG.call(xAxis);
     yAxisG.call(yAxis);
     y2AxisG.call(y2Axis);
 
-    docsPath.attr("d", docsLine(data));
-    recordsPath.attr("d", recordsLine(data));
-    memoryPath.attr("d", memoryLine(data));
+    numberOfDocsPath.attr("d", numberOfDocsLine(data));
+    numberOfRecordsPath.attr("d", numberOfRecordsLine(data));
+    numberOfUsagesPath.attr("d", numberOfUsagesLine(data));
+    recordMemoryPath.attr("d", recordMemoryLine(data));
+    usageMemoryPath.attr("d", usageMemoryLine(data));
   }
 
   function getMessageEncoding(message) {
@@ -221,28 +255,10 @@
     return enc.encode(message);
   }
 
-  async function encryptMessage(message) {
-    const key = await window.crypto.subtle.generateKey(
-      {
-        name: "AES-GCM",
-        length: 256,
-      },
-      false,
-      ["encrypt"],
-    );
-
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    return window.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv },
-      key,
-      message,
-    );
-  }
-
-  async function buildSampleRecord (encrypt = false) {
+  async function buildSampleRecord () {
     const record = {
-      id: Faker.faker.string.uuid(),
-      rev: Faker.faker.string.uuid(),
+      id: crypto.randomUUID(),
+      rev: crypto.randomUUID(),
       createdAt: Faker.faker.date.anytime(),
       deleted: false,
     };
@@ -257,17 +273,45 @@
       rev: record.rev
     };
 
-    const recordToEncrypt = {
+    const payloadRecord = {
       ...record
     };
-    delete recordToEncrypt.id;
-    delete recordToEncrypt.rev;
+    delete payloadRecord.id;
+    delete payloadRecord.rev;
 
-    const encoded = getMessageEncoding(JSON.stringify(recordToEncrypt));
+    const payload = getMessageEncoding(JSON.stringify(payloadRecord));
 
-    const payload = encrypt
-      ? await encryptMessage(encoded)
-      : encoded;
+    const doc = {
+      ...meta,
+      payload,
+    };
+
+    return {
+      record,
+      meta,
+      payload,
+      doc,
+    }
+  }
+
+  async function buildSampleUsage () {
+    const record = {
+      id: crypto.randomUUID(),
+      recordId: crypto.randomUUID(),
+      date: Faker.faker.date.anytime(),
+      url: Faker.faker.internet.url({ appendSlash: true }),
+    };
+
+    const meta = {
+      id: record.id,
+    };
+
+    const payloadRecord = {
+      ...record
+    };
+    delete payloadRecord.id;
+
+    const payload = getMessageEncoding(JSON.stringify(payloadRecord));
 
     const doc = {
       ...meta,
@@ -283,7 +327,7 @@
   }
 
   async function updateRecordSample () {
-    const { record, meta, payload } = await buildSampleRecord(true);
+    const { record, meta, payload } = await buildSampleRecord();
 
     record_sample_container.innerText = JSON.stringify(record, null, 2);
 
@@ -292,198 +336,34 @@
     record_sample_info.innerText = `
       ${record_sample_container.innerText.length} stringified json payload bytes,
       thats ${Math.round(record_sample_container.innerText.length / parseInt(config_form.number_of_fields_per_record.value))} bytes per field
-      which becomes ${metaSize + payload.byteLength} bytes when payload stored AES encrypted (${Math.round((metaSize + payload.byteLength) / parseInt(config_form.number_of_fields_per_record.value))} bytes per field).
+      which becomes approx ${metaSize + payload.byteLength} bytes netto bytes and eff ${Math.round(storageOverheadFactor * (metaSize + payload.byteLength))} bytes on disk (${Math.round((metaSize + payload.byteLength) / parseInt(config_form.number_of_fields_per_record.value))} bytes per field on average).
       `;
   }
 
-  const DATABASE_NAME = "megalist-explorations";
-  const DOC_STORE = 'docs'
+  async function updateUsageSample () {
+    const { record, meta, payload } = await buildSampleUsage();
 
-  const initializeDatabase = () => new Promise((resolve, reject) => {
-    const openReq = indexedDB.open(DATABASE_NAME);
+    usage_sample_container.innerText = JSON.stringify(record, null, 2);
 
-    openReq.onabort = e => reject(e);
-    openReq.onerror = e => reject(e.target.error);
-    openReq.onblocked = e => reject(e);
+    const metaSize = JSON.stringify(meta).length;
 
-    openReq.onupgradeneeded = ({ target: { result: db }}) => {
-      const keyPath = "id";
-      const docStore = db.createObjectStore(DOC_STORE, { keyPath });
-      docStore.createIndex("docs", ["deleted", "id", "rev"], { unique: true, multiEntry: false });
-    }
-
-    openReq.onsuccess = ({ target: { result: db }}) => {
-      db.onabort = () => db.close();
-      db.onversionchange = () => db.close();
-
-      resolve(db);
-    }
-  });
-
-  const saveDocs = (db, docs) => new Promise((resolve, reject) => {
-    const transaction = db.transaction(DOC_STORE, "readwrite");
-    transaction.onabort = e => reject(e);
-    transaction.onerror = e => reject(e);
-    transaction.oncomplete = () => resolve();
-    const docStore = transaction.objectStore(DOC_STORE);
-    for (const doc of docs) {
-      docStore.put(doc)
-    }
-  });
-
-  const dropDatabase = db => new Promise((resolve, reject) => {
-    db.close();
-    localStorage.setItem("year", 2023)
-    localStorage.setItem("docs", 0)
-    const req = indexedDB.deleteDatabase(DATABASE_NAME);
-    req.onsuccess = () => {
-      resolve();
-    };
-  });
-
-  const countRecords = db => new Promise((resolve, reject) => {
-    const transaction = db.transaction(DOC_STORE, "readonly");
-    transaction.onabort = e => reject(e);
-    transaction.onerror = e => reject(e);
-    const docStore = transaction.objectStore(DOC_STORE);
-    const req = docStore.count();
-    req.onsuccess = () => resolve(req.result);
-  });
-
-  async function updateDatabaseInfo() {
-    const { quota, usage } = await navigator.storage.estimate();
-    const db = await initializeDatabase();
-    const numberOfDocs = getNumberOfDocs();
-    const numberOfRecords = await countRecords(db);
-    const year = getCurrentYear();
-    const info = {
-      year,
-      numberOfDocs: numberOfDocs ? formatMemory(numberOfDocs) : 0,
-      numberOfRecords: numberOfRecords ? formatMemory(numberOfRecords) : 0,
-      estimate: {
-        quota: formatMemory(quota),
-        usage: formatMemory(usage),
-        usagePerDoc: numberOfDocs ? formatMemory(usage / numberOfDocs) : NaN,
-        usagePerRecord: numberOfRecords ? formatMemory(usage / numberOfRecords) : NaN,
-      }
-    };
-    database_info_container.innerText = JSON.stringify(info, null, 2);
-  }
-
-  function getCurrentYear() {
-    const year = localStorage.getItem("year")
-    return year ? parseInt(year) : 2023;
-  }
-
-  function getNumberOfDocs() {
-    const numberOfDocs = localStorage.getItem("docs")
-    return numberOfDocs ? parseInt(numberOfDocs) : 0;
+    usage_sample_info.innerText = `
+      ${usage_sample_container.innerText.length} stringified json payload bytes,
+      which becomes approx ${metaSize + payload.byteLength} netto bytes and eff ${Math.round(storageOverheadFactor * (metaSize + payload.byteLength))} bytes on disk.
+      `;
   }
 
   function updateMemoryPerRecord() {
     memory_per_record.value = formatMemory(memoryPerRecord());
   }
 
-  config_form.onchange = () => {
+  function update() {
     updateMemoryPerRecord();
     updateRecordSample();
+    updateUsageSample();
     updateChart();
-  };
+  }
 
-  config_form.onsubmit = e => e.preventDefault();
-  
-  action_button_drop.onclick = async () => {
-    const db = await initializeDatabase();
-    await dropDatabase(db);
-    updateDatabaseInfo();
-  };
-  
-  action_button_seed.onclick = async () => {
-    action_button_seed.disabled = true;
-    const initialButtonText = action_button_seed.innerText;
-    action_button_seed.innerText = "building docs...";
-    
-    let numberOfDocs = getNumberOfDocs();
-
-    console.time("seed: building docs");
-    const docs = [];
-    for (let i = 0; i < parseInt(config_form.initial_number_of_records.value); i++) {
-      const { doc } = await buildSampleRecord();
-      docs.push(doc);
-    }
-    console.timeEnd("seed: building docs");
-
-    const db = await initializeDatabase();
-
-    action_button_seed.innerText = "saving docs...";
-    console.time("seed: saving docs");
-    await saveDocs(db, docs);
-
-    console.timeEnd("seed: saving docs")
-
-    localStorage.setItem("docs", numberOfDocs + docs.length)
-
-    await updateDatabaseInfo();
-
-    action_button_seed.innerText = initialButtonText
-    action_button_seed.disabled = false;
-  };
-
-  action_button_seed_usage.onclick = async () => {
-    action_button_seed_usage.disabled = true;
-    const initialButtonText = action_button_seed_usage.innerText;
-    
-    console.time("seed usage");
-
-    const db = await initializeDatabase();
-
-    let numberOfDocs = getNumberOfDocs();
-    
-    const startYear = getCurrentYear();
-    let year = startYear + 1;
-
-    for (year; year <= startYear + 20; year++) {
-      action_button_seed_usage.innerText = `Seeding ${year}...`;
-      const docs = [];
-      
-      console.time(`seed usage: building docs for ${year}`);
-      for (let month = 0; month < 12; month++) {
-        const newDocs = parseInt(config_form.number_of_records_added_per_month.value);
-        const newChanges = Math.round(parseInt(config_form.percentage_of_record_changes_per_month.value) * numberOfDocs / 100);
-        numberOfDocs += newDocs;
-
-        const newRecords = newDocs + newChanges;
-        for (let i = 0; i < newRecords; i++) {
-          const { doc } = await buildSampleRecord();
-          docs.push(doc);
-        }
-      }
-      console.timeEnd(`seed usage: building docs for ${year}`);
-
-      console.time(`seed usage: saving ${docs.length} docs`);
-      await saveDocs(db, docs);
-      console.timeEnd(`seed usage: saving ${docs.length} docs`)
-    
-      localStorage.setItem("year", year)
-      localStorage.setItem("docs", numberOfDocs)
-      await updateDatabaseInfo();
-    }
-    console.timeEnd("seed usage")
-      
-    action_button_seed_usage.innerText = initialButtonText
-    action_button_seed_usage.disabled = false;
-  };
-
-  action_button_measure.onclick = () => {
-    console.log("measure...")
-  };
-
-
-  async function run() {
-    updateRecordSample();
-    updateMemoryPerRecord();
-    await updateDatabaseInfo();
-  } 
-
-  run();
+  config_form.onchange = () => update();
+  update();
 </script>
